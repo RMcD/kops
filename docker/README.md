@@ -25,3 +25,47 @@ To build the lighter version:
 $ docker build -t kops:light -f Dockerfile-light .
 $ KOPS="docker run -v $HOME/.aws:/root/.aws:ro -v $HOME/.ssh:/root/.ssh:ro -v $HOME/.kube:/root/.kube -it kops:light --state=$KOPS_STATE_STORE"
   ```
+### Powershell wrapper
+This powershell wrapper allows for kops to be used in Powershell. It assumes that the AWS SDK and Docker for Windows are installed and that the containermode for Docker is set to Linux.
+
+```powershell
+function Create-KopsContainer {
+    $basePath = "$HOME\AppData\Local\Temp\KOPS\"
+    if(!(Test-Path $basePath)) {
+        md $basePath | Out-Null
+    }
+    $tempPath = Join-Path $basePath "Dockerfile-light"
+    Invoke-WebRequest -Uri "https://raw.githubusercontent.com/kubernetes/kops/master/docker/Dockerfile-light" -OutFile $tempPath
+    iex "docker build -t kops:light -f $tempPath ."
+}
+
+function Invoke-Kops {
+    param (
+        [Parameter(ValueFromRemainingArguments=$true)] $extras = $null
+    )
+    $dockerPath = get-command "docker.exe" | select -ExpandProperty source -first 1
+    $kubePath = Join-Path $env:Home '/.kube'
+    if(!(Test-Path $kubePath)) {
+        md $kubePath
+    }
+    $cliArgs = @(
+        "run",
+        "--env AWS_SDK_LOAD_CONFIG=1",
+        "-it",
+        "-v $((Join-Path $env:Home '/.aws').Replace('\','/')):/root/.aws:ro",
+        "-v $((Join-Path $env:Home '/.ssh').Replace('\','/')):/root/.ssh:ro",
+        "-v $($kubePath.Replace('\','/')):/root/.kube",
+        "kops:light"
+    )
+    if($env:KOPS_STATE_STORE) {
+        $cliArgs += @("--state=$env:KOPS_STATE_STORE")
+    }
+    if($extras) {
+        $cliArgs += $extras
+    }
+
+    Start-Process $dockerPath -NoNewWindow -ArgumentList $cliArgs -Wait
+}
+
+Set-Alias -Name KOPS -Value Invoke-Kops
+```
